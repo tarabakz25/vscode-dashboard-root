@@ -1,25 +1,89 @@
 import * as vscode from 'vscode'
 import * as fs from 'fs'
 import * as path from 'path'
-import { initializeApp } from 'firebase/app'
-import { getFirestore, collection, doc, setDoc, getDoc, query, where, getDocs, Timestamp, DocumentData } from 'firebase/firestore'
+import { initializeApp, FirebaseApp } from 'firebase/app'
+import { getFirestore, collection, doc, setDoc, addDoc, getDoc, query, where, getDocs, Timestamp, DocumentData, Firestore } from 'firebase/firestore'
 
 // データ保存先のディレクトリ名 (ローカルストレージ用、バックアップとして保持)
 const DATA_DIR = 'coding-activity-data'
 
-// Firebaseの設定
-const firebaseConfig = {
-  apiKey: process.env.FIREBASE_API_KEY,
-  authDomain: process.env.FIREBASE_AUTH_DOMAIN,
-  projectId: process.env.FIREBASE_PROJECT_ID,
-  storageBucket: process.env.FIREBASE_STORAGE_BUCKET,
-  messagingSenderId: process.env.FIREBASE_MESSAGING_SENDER_ID,
-  appId: process.env.FIREBASE_APP_ID
-};
+// Firebase設定ファイルのパス
+const FIREBASE_CONFIG_PATH = path.join(__dirname, '..', 'firebase-config.json');
 
-// Firebaseの初期化
-const app = initializeApp(firebaseConfig);
-const db = getFirestore(app);
+// Firebase設定用のインターフェース
+export interface FirebaseConfig {
+  apiKey: string;
+  authDomain: string;
+  projectId: string;
+  storageBucket?: string;
+  messagingSenderId?: string;
+  appId?: string;
+}
+
+// Firebaseアプリとデータベースのインスタンス
+let app: FirebaseApp | null = null;
+let db: Firestore | null = null;
+
+/**
+ * Firebaseの初期化 - 設定ファイルから読み込み
+ */
+export function initializeFirebase(): void {
+  try {
+    // 設定ファイルから読み込み
+    let config: FirebaseConfig;
+    
+    if (fs.existsSync(FIREBASE_CONFIG_PATH)) {
+      console.log('Firebase設定ファイルを読み込み:', FIREBASE_CONFIG_PATH);
+      const configText = fs.readFileSync(FIREBASE_CONFIG_PATH, 'utf8');
+      config = JSON.parse(configText);
+    } else {
+      // 設定ファイルがない場合はエラー
+      const errorMessage = `Firebase設定ファイルが見つかりません: ${FIREBASE_CONFIG_PATH}`;
+      console.error(errorMessage);
+      vscode.window.showErrorMessage(errorMessage);
+      return;
+    }
+    
+    // Firebaseアプリの初期化
+    app = initializeApp(config);
+    
+    // Firestoreデータベースの取得
+    db = getFirestore(app);
+    
+    console.log('Firebaseが正常に初期化されました');
+  } catch (error) {
+    console.error('Firebase初期化エラー:', error);
+    vscode.window.showErrorMessage('Firebaseの初期化に失敗しました。設定ファイルを確認してください。');
+  }
+}
+
+/**
+ * ユーザー識別子を取得（またはローカルに保存されていなければ生成）
+ */
+export async function getUserId(): Promise<string> {
+  const context = await getExtensionContext();
+  let userId = await context.secrets.get('user_id');
+  
+  if (!userId) {
+    // マシン情報とランダム値を組み合わせて一意のIDを生成
+    userId = generateUUID();
+    await context.secrets.store('user_id', userId);
+    console.log('新しいユーザーIDを生成しました:', userId);
+  }
+  
+  return userId;
+}
+
+/**
+ * UUID生成関数
+ */
+function generateUUID(): string {
+  return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function(c) {
+    const r = Math.random() * 16 | 0;
+    const v = c === 'x' ? r : (r & 0x3 | 0x8);
+    return v.toString(16);
+  });
+}
 
 /**
  * イベントを保存する
@@ -27,44 +91,51 @@ const db = getFirestore(app);
  */
 export async function storeEvent(event: any): Promise<void> {
   try {
-    // 現在の日付を取得
-    const date = new Date()
-    const dateString = `${date.getFullYear()}-${(date.getMonth() + 1).toString().padStart(2, '0')}-${date.getDate().toString().padStart(2, '0')}`
-    
-    // イベントにタイムスタンプを追加
-    event.timestamp = Timestamp.fromDate(date)
-    
-    // Firestoreのコレクションとドキュメント参照を作成
-    const eventsCollectionRef = collection(db, 'coding-activity-events')
-    const dateDocRef = doc(eventsCollectionRef, dateString)
-    
-    // 既存のデータを取得
-    const docSnap = await getDoc(dateDocRef)
-    let events: any[] = []
-    
-    if (docSnap.exists()) {
-      events = docSnap.data().events || []
+    // Firebaseが初期化されているか確認
+    if (!db) {
+      console.error('Firestoreが初期化されていません');
+      await storeEventLocally(event, getDateString());
+      return;
     }
+
+    // ユーザー識別子を取得
+    const userId = await getUserId();
     
-    // 新しいイベントを追加
-    events.push(event)
+    // イベントデータの準備
+    const date = new Date();
+    const eventData = {
+      event: event.type || event.subtype || 'unknown',
+      file: event.data?.document || '',
+      timestamp: date.toISOString(),
+      duration: event.data?.idleDuration || 0,
+      userId: userId  // ユーザーIDを含める
+    };
     
-    // ドキュメントに書き込み
-    await setDoc(dateDocRef, { events: events }, { merge: true })
-    
-    // バックアップとしてローカルにも保存
-    await storeEventLocally(event, dateString)
-    
-    console.log(`イベントを保存しました: ${event.type}`)
+    // Firestoreに保存
+    try {
+      // activity_logsコレクションに保存
+      await addDoc(collection(db, 'activity_logs'), eventData);
+      console.log(`イベントを保存しました: ${eventData.event} (ユーザー: ${userId})`);
+    } catch (firestoreError) {
+      console.error('Firestoreへの保存に失敗しました:', firestoreError);
+      // バックアップとしてローカルに保存
+      await storeEventLocally(event, getDateString());
+    }
   } catch (error) {
-    console.error('イベント保存中にエラーが発生しました:', error)
-    vscode.window.showErrorMessage('コーディング活動の記録中にエラーが発生しました')
+    console.error('イベント保存中にエラーが発生しました:', error);
+    vscode.window.showErrorMessage('コーディング活動の記録中にエラーが発生しました');
     
     // エラー時はローカルにバックアップ
-    const date = new Date()
-    const dateString = `${date.getFullYear()}-${(date.getMonth() + 1).toString().padStart(2, '0')}-${date.getDate().toString().padStart(2, '0')}`
-    await storeEventLocally(event, dateString)
+    await storeEventLocally(event, getDateString());
   }
+}
+
+/**
+ * 現在の日付文字列を取得
+ */
+function getDateString(): string {
+  const date = new Date();
+  return `${date.getFullYear()}-${(date.getMonth() + 1).toString().padStart(2, '0')}-${date.getDate().toString().padStart(2, '0')}`;
 }
 
 /**
@@ -75,25 +146,25 @@ export async function storeEvent(event: any): Promise<void> {
 async function storeEventLocally(event: any, dateString: string): Promise<void> {
   try {
     // 保存先ディレクトリの確認と作成
-    const storageDir = await ensureStorageDirectory()
+    const storageDir = await ensureStorageDirectory();
     
     // 日付ごとのファイル名を生成（YYYY-MM-DD.json）
-    const fileName = `${dateString}.json`
-    const filePath = path.join(storageDir, fileName)
+    const fileName = `${dateString}.json`;
+    const filePath = path.join(storageDir, fileName);
     
     // 既存のデータを読み込み、新しいイベントを追加
-    let events: any[] = []
+    let events: any[] = [];
     if (fs.existsSync(filePath)) {
-      const fileContent = fs.readFileSync(filePath, 'utf8')
-      events = JSON.parse(fileContent)
+      const fileContent = fs.readFileSync(filePath, 'utf8');
+      events = JSON.parse(fileContent);
     }
     
-    events.push(event)
+    events.push(event);
     
     // ファイルに書き込み
-    fs.writeFileSync(filePath, JSON.stringify(events, null, 2), 'utf8')
+    fs.writeFileSync(filePath, JSON.stringify(events, null, 2), 'utf8');
   } catch (error) {
-    console.error('ローカルバックアップ保存中にエラーが発生しました:', error)
+    console.error('ローカルバックアップ保存中にエラーが発生しました:', error);
   }
 }
 
@@ -103,31 +174,31 @@ async function storeEventLocally(event: any, dateString: string): Promise<void> 
  */
 async function ensureStorageDirectory(): Promise<string> {
   // 拡張機能のグローバルストレージパスを取得
-  const context = await getExtensionContext()
-  const storageDir = path.join(context.globalStoragePath, DATA_DIR)
+  const context = await getExtensionContext();
+  const storageDir = path.join(context.globalStoragePath, DATA_DIR);
   
   // ディレクトリが存在しない場合は作成
   if (!fs.existsSync(storageDir)) {
-    fs.mkdirSync(storageDir, { recursive: true })
+    fs.mkdirSync(storageDir, { recursive: true });
   }
   
-  return storageDir
+  return storageDir;
 }
 
 /**
  * 拡張機能のコンテキストを取得（シングルトンパターン）
  */
-let extensionContext: vscode.ExtensionContext | null = null
+let extensionContext: vscode.ExtensionContext | null = null;
 
 export function setExtensionContext(context: vscode.ExtensionContext): void {
-  extensionContext = context
+  extensionContext = context;
 }
 
 async function getExtensionContext(): Promise<vscode.ExtensionContext> {
   if (!extensionContext) {
-    throw new Error('Extension context not initialized')
+    throw new Error('Extension context not initialized');
   }
-  return extensionContext
+  return extensionContext;
 }
 
 /**
@@ -138,34 +209,45 @@ async function getExtensionContext(): Promise<vscode.ExtensionContext> {
  */
 export async function getEventsInRange(startDate: Date, endDate: Date): Promise<any[]> {
   try {
-    // Firestoreからデータを取得
-    const result: any[] = []
-    const eventsCollectionRef = collection(db, 'coding-activity-events')
+    // ユーザーIDを取得
+    const userId = await getUserId();
     
-    // 日付の範囲内のドキュメントを処理
-    const currentDate = new Date(startDate)
-    while (currentDate <= endDate) {
-      const dateString = `${currentDate.getFullYear()}-${(currentDate.getMonth() + 1).toString().padStart(2, '0')}-${currentDate.getDate().toString().padStart(2, '0')}`
-      const dateDocRef = doc(eventsCollectionRef, dateString)
-      
-      const docSnap = await getDoc(dateDocRef)
-      if (docSnap.exists()) {
-        const data = docSnap.data()
-        if (data.events && Array.isArray(data.events)) {
-          result.push(...data.events)
-        }
-      }
-      
-      // 次の日へ
-      currentDate.setDate(currentDate.getDate() + 1)
+    // Firebaseが初期化されているか確認
+    if (!db) {
+      console.error('Firestoreが初期化されていません');
+      return getEventsFromLocalBackup(startDate, endDate);
     }
     
-    return result
+    // Firestoreからデータを取得
+    const result: any[] = [];
+    
+    try {
+      const eventsCollectionRef = collection(db, 'activity_logs');
+      const startTimestamp = startDate.toISOString();
+      const endTimestamp = endDate.toISOString();
+      
+      const q = query(
+        eventsCollectionRef,
+        where('userId', '==', userId),
+        where('timestamp', '>=', startTimestamp),
+        where('timestamp', '<=', endTimestamp)
+      );
+      
+      const querySnapshot = await getDocs(q);
+      querySnapshot.forEach((doc) => {
+        result.push(doc.data());
+      });
+      
+      return result;
+    } catch (firestoreError) {
+      console.error('Firestoreからのデータ取得中にエラーが発生しました:', firestoreError);
+      return getEventsFromLocalBackup(startDate, endDate);
+    }
   } catch (error) {
-    console.error('Firestoreからのデータ取得中にエラーが発生しました:', error)
+    console.error('イベント取得中にエラーが発生しました:', error);
     
     // エラー時はローカルのバックアップから取得
-    return getEventsFromLocalBackup(startDate, endDate)
+    return getEventsFromLocalBackup(startDate, endDate);
   }
 }
 
@@ -176,24 +258,24 @@ export async function getEventsInRange(startDate: Date, endDate: Date): Promise<
  * @returns イベントの配列
  */
 async function getEventsFromLocalBackup(startDate: Date, endDate: Date): Promise<any[]> {
-  const storageDir = await ensureStorageDirectory()
-  const result: any[] = []
+  const storageDir = await ensureStorageDirectory();
+  const result: any[] = [];
   
   // 日付の範囲内のファイルを処理
-  const currentDate = new Date(startDate)
+  const currentDate = new Date(startDate);
   while (currentDate <= endDate) {
-    const fileName = `${currentDate.getFullYear()}-${(currentDate.getMonth() + 1).toString().padStart(2, '0')}-${currentDate.getDate().toString().padStart(2, '0')}.json`
-    const filePath = path.join(storageDir, fileName)
+    const fileName = `${currentDate.getFullYear()}-${(currentDate.getMonth() + 1).toString().padStart(2, '0')}-${currentDate.getDate().toString().padStart(2, '0')}.json`;
+    const filePath = path.join(storageDir, fileName);
     
     if (fs.existsSync(filePath)) {
-      const fileContent = fs.readFileSync(filePath, 'utf8')
-      const events = JSON.parse(fileContent)
-      result.push(...events)
+      const fileContent = fs.readFileSync(filePath, 'utf8');
+      const events = JSON.parse(fileContent);
+      result.push(...events);
     }
     
     // 次の日へ
-    currentDate.setDate(currentDate.getDate() + 1)
+    currentDate.setDate(currentDate.getDate() + 1);
   }
   
-  return result
+  return result;
 }

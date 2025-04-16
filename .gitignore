@@ -3,3 +3,14 @@ node_modules
 .next
 
 .DS_Store
+
+# VSCode拡張機能
+vscode-extention/out
+vscode-extention/node_modules
+vscode-extention/.vscode
+
+# ダッシュボード
+vscode-dashboard/node_modules
+vscode-dashboard/.next
+vscode-dashboard/.env
+

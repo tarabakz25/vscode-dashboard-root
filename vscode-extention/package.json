@@ -1,16 +1,43 @@
 {
   "name": "vscode-extention",
   "version": "1.0.0",
-  "main": "index.js",
+  "main": "./out/extension.js",
+  "engines": {
+    "vscode": "^1.80.0"
+  },
+  "activationEvents": [
+    "onStartupFinished"
+  ],
+  "contributes": {
+    "commands": [
+      {
+        "command": "vscode-coding-time-tracker.showStats",
+        "title": "コーディング統計を表示"
+      },
+      {
+        "command": "vscode-coding-time-tracker.showUserId",
+        "title": "ユーザーIDを表示"
+      }
+    ]
+  },
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "vscode:prepublish": "npm run compile",
+    "compile": "tsc -p ./",
+    "watch": "tsc -watch -p ./",
+    "pretest": "npm run compile",
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "start": "npm run watch"
   },
   "keywords": [],
   "author": "",
   "license": "ISC",
-  "description": "",
+  "description": "VSCode用コーディング時間追跡拡張機能",
   "dependencies": {
-    "firebase": "^11.6.0",
-    "vscode": "^1.1.37"
+    "firebase": "^11.6.0"
+  },
+  "devDependencies": {
+    "@types/node": "^20.0.0",
+    "@types/vscode": "^1.80.0",
+    "typescript": "^5.0.0"
   }
 }
