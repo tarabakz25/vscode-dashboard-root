@@ -1,6 +1,7 @@
 import * as vscode from 'vscode'
 import { EventTracker } from './eventTracker'
 import { setExtensionContext, initializeFirebase, getUserId } from './utils'
+import { activateTsxPreview } from './tsxPreview'
 
 export async function activate(context: vscode.ExtensionContext) {
     console.log('Extension is now active!')
@@ -14,6 +15,9 @@ export async function activate(context: vscode.ExtensionContext) {
     // イベントトラッカーを初期化
     const eventTracker = new EventTracker(context)
     eventTracker.startTracking()
+
+    // TSXプレビュー機能を有効化
+    activateTsxPreview(context)
 
     // 起動時にユーザーIDを表示
     showUserIdAlert()
@@ -39,7 +43,7 @@ export async function activate(context: vscode.ExtensionContext) {
 
     // ユーザーID表示コマンドを登録
     let showUserId = vscode.commands.registerCommand('vscode-coding-time-tracker.showUserId', async () => {
-        showUserIdAlert();
+        showUserIdAlert()
     });
 
     context.subscriptions.push(showStats, showUserId);
@@ -53,11 +57,9 @@ async function showUserIdAlert() {
         // クリップボードにコピー
         await vscode.env.clipboard.writeText(userId);
         
-        // 警告メッセージとして表示（より目立つ）
-        vscode.window.showWarningMessage(
-            `【重要】あなたのユーザーID（クリップボードにコピー済み）: ${userId}`,
-            { modal: true }, // モーダルダイアログとして表示
-            'OK'
+        // 左下のボックスに表示
+        vscode.window.setStatusBarMessage(
+            `ユーザーID: ${userId}`,
         );
     } catch (error) {
         console.error('ユーザーID取得エラー:', error);

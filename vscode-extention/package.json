@@ -6,7 +6,8 @@
     "vscode": "^1.80.0"
   },
   "activationEvents": [
-    "onStartupFinished"
+    "onStartupFinished",
+    "onLanguage:typescriptreact"
   ],
   "contributes": {
     "commands": [
@@ -17,8 +18,21 @@
       {
         "command": "vscode-coding-time-tracker.showUserId",
         "title": "ユーザーIDを表示"
+      },
+      {
+        "command": "vscode-coding-time-tracker.previewTsxFile",
+        "title": "TSXファイルをプレビュー"
       }
-    ]
+    ],
+    "menus": {
+      "editor/context": [
+        {
+          "when": "resourceExtname == .tsx",
+          "command": "vscode-coding-time-tracker.previewTsxFile",
+          "group": "navigation"
+        }
+      ]
+    }
   },
   "scripts": {
     "vscode:prepublish": "npm run compile",
@@ -33,11 +47,17 @@
   "license": "ISC",
   "description": "VSCode用コーディング時間追跡拡張機能",
   "dependencies": {
-    "firebase": "^11.6.0"
+    "firebase": "^11.6.0",
+    "vite-plugin-vue-component-preview": "^1.1.7",
+    "react": "^18.2.0",
+    "react-dom": "^18.2.0"
   },
   "devDependencies": {
     "@types/node": "^20.0.0",
     "@types/vscode": "^1.80.0",
-    "typescript": "^5.0.0"
+    "@types/react": "^18.2.0",
+    "@types/react-dom": "^18.2.0",
+    "typescript": "^5.0.0",
+    "esbuild": "^0.19.0"
   }
 }

@@ -104,7 +104,7 @@ export class EventTracker {
                 }
                 storeEvent(event)
             }
-        }, 60 * 1000)
+        }, 1 * 1000)
 
         // 拡張機能の終了時にインターバルをクリア
         this.context.subscriptions.push({
