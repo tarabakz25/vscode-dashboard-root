@@ -1,7 +1,7 @@
 import * as vscode from 'vscode'
 import { EventTracker } from './eventTracker'
-import { setExtensionContext, initializeFirebase, getUserId } from './utils'
-import { activateTsxPreview } from './tsxPreview'
+import { setExtensionContext, initializeFirebase, getUserId, linkGitHubAccountToUser } from './utils'
+
 
 export async function activate(context: vscode.ExtensionContext) {
     console.log('Extension is now active!')
@@ -16,22 +16,16 @@ export async function activate(context: vscode.ExtensionContext) {
     const eventTracker = new EventTracker(context)
     eventTracker.startTracking()
 
-    // TSXプレビュー機能を有効化
-    activateTsxPreview(context)
-
-    // 起動時にユーザーIDを表示
-    showUserIdAlert()
-
     // 統計表示コマンドを登録
     let showStats = vscode.commands.registerCommand('vscode-coding-time-tracker.showStats', async () => {
         const userId = await getUserId();
-        const dashboardUrl = `https://your-dashboard-url.com/?userId=${userId}`;
+        const dashboardUrl = `http://localhost:3000/dashboard?userId=${userId}`
         
-        const options = ['ユーザーIDをコピー', 'ダッシュボードを開く'];
+        const options = ['ユーザーIDをコピー', 'ダッシュボードを開く']
         const selection = await vscode.window.showInformationMessage(
             `あなたのユーザーID: ${userId}`, 
             ...options
-        );
+        )
         
         if (selection === 'ユーザーIDをコピー') {
             await vscode.env.clipboard.writeText(userId);
@@ -41,29 +35,38 @@ export async function activate(context: vscode.ExtensionContext) {
         }
     })
 
-    // ユーザーID表示コマンドを登録
-    let showUserId = vscode.commands.registerCommand('vscode-coding-time-tracker.showUserId', async () => {
-        showUserIdAlert()
-    });
+    // GitHubアカウント連携コマンドを登録
+    let linkGitHubAccount = vscode.commands.registerCommand('vscode-coding-time-tracker.linkGitHubAccount', async () => {
+        try {
+            // 1. VS CodeのユーザーIDを取得
+            const userId = await getUserId();
+            if (!userId) {
+                vscode.window.showErrorMessage('ユーザーIDを取得できませんでした。');
+                return;
+            }
 
-    context.subscriptions.push(showStats, showUserId);
-}
+            // 2. GitHub認証セッションを取得
+            const session = await vscode.authentication.getSession('github', ['read:user'], { createIfNone: true });
 
-// ユーザーIDをアラートとして表示
-async function showUserIdAlert() {
-    try {
-        const userId = await getUserId();
-        
-        // クリップボードにコピー
-        await vscode.env.clipboard.writeText(userId);
-        
-        // 左下のボックスに表示
-        vscode.window.setStatusBarMessage(
-            `ユーザーID: ${userId}`,
-        );
-    } catch (error) {
-        console.error('ユーザーID取得エラー:', error);
-    }
+            if (session) {
+                const githubUsername = session.account.label;
+                const githubUserId = session.account.id; // GitHubの数値IDを取得
+
+                // 3. Firebaseに情報を保存
+                await linkGitHubAccountToUser(userId, githubUsername, githubUserId); // 関数を呼び出す
+
+                vscode.window.showInformationMessage(`GitHubアカウント (${githubUsername}) との連携に成功しました。`);
+            } else {
+                vscode.window.showWarningMessage('GitHubアカウントの認証に失敗しました。');
+            }
+        } catch (error) {
+            console.error('GitHubアカウント連携エラー:', error);
+            // linkGitHubAccountToUser 内でエラーが投げられた場合もここでキャッチされる
+            vscode.window.showErrorMessage('GitHubアカウントの連携中にエラーが発生しました。');
+        }
+    })
+
+    context.subscriptions.push(showStats, linkGitHubAccount);
 }
 
 export function deactivate() {

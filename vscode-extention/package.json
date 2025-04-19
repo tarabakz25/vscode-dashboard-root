@@ -22,6 +22,10 @@
       {
         "command": "vscode-coding-time-tracker.previewTsxFile",
         "title": "TSXファイルをプレビュー"
+      },
+      {
+        "command": "vscode-coding-time-tracker.linkGitHubAccount",
+        "title": "GitHubアカウントを連携"
       }
     ],
     "menus": {
@@ -47,17 +51,18 @@
   "license": "ISC",
   "description": "VSCode用コーディング時間追跡拡張機能",
   "dependencies": {
+    "@types/markdown-it": "^14.1.2",
     "firebase": "^11.6.0",
-    "vite-plugin-vue-component-preview": "^1.1.7",
     "react": "^18.2.0",
-    "react-dom": "^18.2.0"
+    "react-dom": "^18.2.0",
+    "vite-plugin-vue-component-preview": "^1.1.7"
   },
   "devDependencies": {
     "@types/node": "^20.0.0",
-    "@types/vscode": "^1.80.0",
     "@types/react": "^18.2.0",
     "@types/react-dom": "^18.2.0",
-    "typescript": "^5.0.0",
-    "esbuild": "^0.19.0"
+    "@types/vscode": "^1.80.0",
+    "esbuild": "^0.19.0",
+    "typescript": "^5.0.0"
   }
 }

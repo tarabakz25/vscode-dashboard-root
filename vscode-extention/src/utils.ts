@@ -131,6 +131,35 @@ export async function storeEvent(event: any): Promise<void> {
 }
 
 /**
+ * GitHubアカウント情報をユーザーIDに紐付けてFirestoreに保存する
+ * @param vscodeUserId VS Code 拡張機能のユーザーID
+ * @param githubUsername GitHubのユーザー名
+ * @param githubUserId GitHubの数値ID
+ */
+export async function linkGitHubAccountToUser(vscodeUserId: string, githubUsername: string, githubUserId: string): Promise<void> {
+  if (!db) {
+    console.error('Firestoreが初期化されていません。GitHubアカウント連携情報を保存できません。');
+    // ここでエラーを投げるか、ユーザーに通知するか検討
+    throw new Error('Firestore is not initialized.');
+  }
+
+  try {
+    const userLinkRef = doc(db, 'userLinks', vscodeUserId); // 'userLinks' コレクションに、VS CodeユーザーIDをドキュメントIDとして保存
+    await setDoc(userLinkRef, {
+      githubUsername: githubUsername,
+      githubUserId: githubUserId,
+      linkedAt: Timestamp.now() // 連携した日時も保存
+    }, { merge: true }); // 既に情報が存在する場合はマージ（更新）
+
+    console.log(`ユーザー (${vscodeUserId}) のGitHubアカウント (${githubUsername}) 連携情報をFirestoreに保存しました。`);
+  } catch (error) {
+    console.error('FirestoreへのGitHub連携情報の保存に失敗しました:', error);
+    // エラーハンドリング: 必要に応じてユーザーへの通知や再試行ロジックを追加
+    throw error; // エラーを呼び出し元に伝える
+  }
+}
+
+/**
  * 現在の日付文字列を取得
  */
 function getDateString(): string {
