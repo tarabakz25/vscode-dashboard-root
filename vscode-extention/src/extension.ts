@@ -51,9 +51,13 @@ export async function activate(context: vscode.ExtensionContext) {
             if (session) {
                 const githubUsername = session.account.label;
                 const githubUserId = session.account.id; // GitHubの数値IDを取得
+                // GitHubセッションからメールアドレスを取得試行 (存在しない場合はnull)
+                // Note: VS CodeのGitHub認証プロバイダーがメールアドレスをどのように公開するかに依存します。
+                // 'read:user' スコープで取得できるか、'user:email' が必要か確認が必要な場合があります。
+                const githubUserEmail = (session.account as any).email ?? null; // emailプロパティが存在すると仮定し、なければnull
 
-                // 3. Firebaseに情報を保存
-                await linkGitHubAccountToUser(userId, githubUsername, githubUserId); // 関数を呼び出す
+                // 3. Firebaseに情報を保存 (メールアドレスも渡す)
+                await linkGitHubAccountToUser(userId, githubUsername, githubUserId, githubUserEmail);
 
                 vscode.window.showInformationMessage(`GitHubアカウント (${githubUsername}) との連携に成功しました。`);
             } else {

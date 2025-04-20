@@ -135,8 +135,9 @@ export async function storeEvent(event: any): Promise<void> {
  * @param vscodeUserId VS Code 拡張機能のユーザーID
  * @param githubUsername GitHubのユーザー名
  * @param githubUserId GitHubの数値ID
+ * @param githubUserEmail GitHubのメールアドレス (取得できない場合はnull)
  */
-export async function linkGitHubAccountToUser(vscodeUserId: string, githubUsername: string, githubUserId: string): Promise<void> {
+export async function linkGitHubAccountToUser(vscodeUserId: string, githubUsername: string, githubUserId: string, githubUserEmail: string | null): Promise<void> {
   if (!db) {
     console.error('Firestoreが初期化されていません。GitHubアカウント連携情報を保存できません。');
     // ここでエラーを投げるか、ユーザーに通知するか検討
@@ -148,6 +149,7 @@ export async function linkGitHubAccountToUser(vscodeUserId: string, githubUserna
     await setDoc(userLinkRef, {
       githubUsername: githubUsername,
       githubUserId: githubUserId,
+      githubUserEmail: githubUserEmail, // メールアドレスも保存
       linkedAt: Timestamp.now() // 連携した日時も保存
     }, { merge: true }); // 既に情報が存在する場合はマージ（更新）
 
